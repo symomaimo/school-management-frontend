@@ -1,0 +1,71 @@
+/* .SideBar {
+    width: 180px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 97%;
+    background-color: #34495e;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-left: 14px; 
+    margin-top: 10px;
+    margin-bottom: 15px;
+  }
+  .bottom-container {
+    margin-top: auto; 
+    display: flex;
+    flex-direction: column;
+    gap: 6px; 
+  }
+  
+  .Logo {
+    color: white;
+    font-size: 8px;
+    font-weight: 200;
+    border-bottom: 1px solid #8292A3;
+    text-align: center;
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    margin-bottom: -12px;
+  }
+  
+  nav {
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    background-color: transparent; 
+    height: calc(100% - 72px); 
+   
+  }
+  
+
+nav a {
+    display: flex;  
+    color: white;
+    text-decoration: none;
+    padding: 12px 20px;
+    gap: 6px;
+    margin: 5px 0;
+    align-items: center; 
+    border-radius: 4px;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  
+  nav a.active {
+    background-color: #ffffff;
+    color: black;
+  }
+  
+  nav a:hover {
+    background-color: #ffffff;
+    color: black;             
+  }
+  
+  
+  .main-content {
+    margin-left: 200px;
+    padding: 20px;
+  }
+   */

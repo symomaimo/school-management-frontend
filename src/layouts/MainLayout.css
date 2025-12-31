@@ -1,0 +1,25 @@
+/* .layout-container {
+    display: flex;
+    height: 100vh;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    width: 10%;
+    padding: 20px;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+    border-radius: 0 10px 10px 0; 
+    position: fixed;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  
+  .outlet {
+    width: 90%;
+    margin-left: 13%;
+    padding: 20px;
+    overflow-y: auto;
+   
+  }
+   */

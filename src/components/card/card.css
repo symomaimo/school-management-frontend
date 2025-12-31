@@ -1,0 +1,24 @@
+/* .card-container{
+    display: flex;
+    
+    box-shadow: rgba(100, 100, 111, 0.2) 0px 7px 29px 0px;
+    height: 87px;
+    width: 180px;
+    background-color: #ffffff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+} */
+.card-container {
+    flex: 1 1 22%;
+    height: 87px;
+    width: 180px;
+    background-color: #ffffff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 1px;
+    gap: 2px;
+}
