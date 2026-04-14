@@ -1,28 +1,21 @@
 // src/pages/students/Students.jsx
 import React, { useState, useEffect, useMemo } from "react";
-import axios from "axios";
-import AddStudentForm from "./AddStudentForm"; // <-- ensure this path is correct
+import api from "../../api/Axios.js";
+import AddStudentForm from "./AddStudentForm";
 
 const CLASS_FILTERS = [
-  "Playgroup", "PP1", "PP2",
+  "Playgroup","PP1","PP2",
   "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5",
-  "Grade 6","Grade 7","Grade 8","Grade 9"
+  "Grade 6","Grade 7","Grade 8","Grade 9",
 ];
 
-/** Normalize any backend class text into a canonical label in CLASS_FILTERS */
 function normalizeClass(raw) {
   const v = String(raw ?? "").trim().toLowerCase();
-
-  if (!v) return ""; // keep empty for "All"
-
-  // Playgroup
+  if (!v) return "";
   if (["playgroup", "play group", "pg"].includes(v)) return "Playgroup";
-
-  // PP1 / PP2
   if (["pp1", "pp 1", "pp-1"].includes(v)) return "PP1";
   if (["pp2", "pp 2", "pp-2"].includes(v)) return "PP2";
 
-  // Grade (accept "grade8", "grade 8", "grade-8", "class 8", "std 8", "standard 8", "g8")
   const gradeNum =
     v.match(/(?:grade|class|std|standard)[-\s]*([1-9])/i)?.[1] ||
     v.match(/^g([1-9])$/i)?.[1] ||
@@ -30,62 +23,66 @@ function normalizeClass(raw) {
     v.match(/^grade[-\s]*([1-9])$/i)?.[1];
 
   if (gradeNum) return `Grade ${gradeNum}`;
-
-  // If nothing matched, return the trimmed original capitalized (fallback)
   return raw ? String(raw).trim() : "";
 }
 
 export default function Students() {
+  const today = new Date();
+  const [year, setYear] = useState(today.getFullYear());
+
   const [students, setStudents] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const [selectedClass, setSelectedClass] = useState(""); // exact label from CLASS_FILTERS or "" for all
-  const [searchTerm, setSearchTerm]       = useState("");
+  const [selectedClass, setSelectedClass] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
-  // modal states
-  const [showAddForm, setShowAddForm]     = useState(false);
-  const [selectedStudent, setSelectedStudent] = useState(null); // for view/edit
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState(null);
 
-  useEffect(() => { fetchStudents(); }, []);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("Duplicate / wrong entry");
+
+  useEffect(() => {
+    fetchStudents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year]);
 
   async function fetchStudents() {
     try {
-      const res = await axios.get("http://localhost:5000/students");
+      setError(null);
+      setLoading(true);
+
+      // ✅ Option B: only students enrolled in selected year
+      const res = await api.get("/students", {
+        params: { year, onlyEnrolled: true },
+      });
+
       const rows = Array.isArray(res.data) ? res.data : [];
       setStudents(rows);
-
-      // Debug: see raw unique class values coming from backend
-      const uniques = [...new Set(rows.map(s => String(s?.studentclass ?? "").trim()))];
-      // eslint-disable-next-line no-console
-      console.log("Unique raw classes from backend:", uniques);
-
-      setLoading(false);
     } catch (e) {
-      setError(e.message || "Failed to load");
+      const msg = e?.response?.data?.error || e?.message || "Failed to load";
+      setError(msg);
+    } finally {
       setLoading(false);
     }
   }
 
-  function handleStudentAdded(classLabelJustAdded) {
-    if (classLabelJustAdded) setSelectedClass(classLabelJustAdded);
+  function handleStudentAdded() {
     fetchStudents();
-  }
-
-  function handleAddStudent() {
-    setShowAddForm(true);
-  }
-
-  function closeAddForm() {
-    setShowAddForm(false);
   }
 
   function handleView(id) {
     const s = students.find((x) => x._id === id);
     if (!s) return;
+
+    setDeleteReason("Duplicate / wrong entry");
+
+    // ✅ when opening modal, use classForYear for editing
     setSelectedStudent({
       ...s,
-      parent: s.parent || { fullName: "", phone: "", address: "", email: "" }
+      studentclass: s.classForYear || s.studentclass,
+      parent: s.parent || { fullName: "", phone: "", address: "", email: "" },
     });
   }
 
@@ -93,21 +90,19 @@ export default function Students() {
     e.preventDefault();
     try {
       const payload = {
+        year, // ✅ IMPORTANT: update enrollment for this year
         firstName: selectedStudent.firstName,
         secondName: selectedStudent.secondName,
-        studentclass: selectedStudent.studentclass, // keep what you edit; consider normalizing before saving if you want
+        studentclass: selectedStudent.studentclass,
         parentDetails: {
           fullName: selectedStudent.parent?.fullName || "",
           phone: selectedStudent.parent?.phone || "",
           address: selectedStudent.parent?.address || "",
-          email: selectedStudent.parent?.email || ""
-        }
+          email: selectedStudent.parent?.email || "",
+        },
       };
 
-      const res = await axios.put(
-        `http://localhost:5000/students/${selectedStudent._id}`,
-        payload
-      );
+      const res = await api.put(`/students/${selectedStudent._id}`, payload);
 
       if (res.status === 200) {
         alert("Student updated ✅");
@@ -118,20 +113,51 @@ export default function Students() {
       const msg =
         err?.response?.status === 409
           ? "That phone is already linked to another parent."
-          : err?.response?.data?.error || err.message || "Update failed";
+          : err?.response?.data?.error ||
+            err?.response?.data?.msg ||
+            err.message ||
+            "Update failed";
       alert(msg);
     }
   }
 
-  // Filter + search (memoized, using normalized class)
+  async function handleDeleteStudent() {
+    if (!selectedStudent?._id) return;
+
+    const name = `${selectedStudent.firstName || ""} ${selectedStudent.secondName || ""}`.trim();
+
+    const ok = window.confirm(
+      `Delete (Deactivate) this student?\n\n${name}\nYear: ${year}\n\nThis will NOT remove payments. It only hides the student from active lists.`
+    );
+    if (!ok) return;
+
+    try {
+      setDeleting(true);
+
+      await api.delete(`/students/${selectedStudent._id}`, {
+        data: { reason: deleteReason || "Deleted by user" },
+      });
+
+      alert("Student deleted (deactivated) ✅");
+      setSelectedStudent(null);
+      await fetchStudents();
+    } catch (e) {
+      const msg =
+        e?.response?.data?.error ||
+        e?.response?.data?.msg ||
+        e?.message ||
+        "Failed to delete student";
+      alert(msg);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const filteredStudents = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return (students || []).filter((s) => {
-      const normalized = normalizeClass(s?.studentclass);
-
-      const matchesClass = selectedClass
-        ? normalized === selectedClass
-        : true;
+      const cls = normalizeClass(s?.classForYear || s?.studentclass);
+      const matchesClass = selectedClass ? cls === selectedClass : true;
 
       const full = `${s?.firstName ?? ""} ${s?.secondName ?? ""}`.trim().toLowerCase();
       const matchesSearch = q ? full.includes(q) : true;
@@ -141,23 +167,57 @@ export default function Students() {
   }, [students, selectedClass, searchTerm]);
 
   if (loading) return <div className="p-6">Loading...</div>;
-  if (error)   return <div className="p-6 text-red-600">Error: {error}</div>;
+  if (error) return <div className="p-6 text-red-600">Error: {error}</div>;
 
   return (
     <div className="p-6">
-      {/* Sticky page header */}
-      <div className="sticky top-0 z-30 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-b pb-3 mb-3">
+      {/* Sticky header */}
+      <div className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b pb-3 mb-3">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
-          <h2 className="text-2xl font-bold">Manage Students</h2>
-          <button
-            onClick={handleAddStudent}
-            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg"
-          >
-            Add Student
-          </button>
+          <div>
+            <h2 className="text-2xl font-bold">Manage Students</h2>
+            <div className="text-sm text-gray-600">
+              Showing enrolled students for <b>{year}</b> (Total: {students.length})
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Year switcher */}
+            <button
+              type="button"
+              className="px-2 py-1 border rounded text-sm"
+              onClick={() => setYear((y) => y - 1)}
+              title="Previous year"
+            >
+              −
+            </button>
+            <input
+              type="number"
+              min="2020"
+              max="2100"
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value))}
+              className="w-24 border rounded-lg px-2 py-1 text-sm text-center"
+            />
+            <button
+              type="button"
+              className="px-2 py-1 border rounded text-sm"
+              onClick={() => setYear((y) => y + 1)}
+              title="Next year"
+            >
+              +
+            </button>
+
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg"
+            >
+              Add Student
+            </button>
+          </div>
         </div>
 
-        {/* Chips + Search in same sticky bar so they never jiggle */}
+        {/* Filters + Search */}
         <div className="mt-3">
           <p className="text-sm mb-2 text-gray-700">Filter by Class</p>
           <div className="flex items-center gap-2">
@@ -171,9 +231,8 @@ export default function Students() {
                       "px-3 py-1.5 rounded-lg text-xs sm:text-sm transition border",
                       selectedClass === label
                         ? "bg-blue-700 text-white border-blue-700"
-                        : "bg-blue-500 hover:bg-blue-600 text-white border-blue-500"
+                        : "bg-blue-500 hover:bg-blue-600 text-white border-blue-500",
                     ].join(" ")}
-                    title={label}
                   >
                     {label}
                   </button>
@@ -184,7 +243,7 @@ export default function Students() {
                     "px-3 py-1.5 rounded-lg text-xs sm:text-sm transition border",
                     !selectedClass
                       ? "bg-gray-700 text-white border-gray-700"
-                      : "bg-gray-500 hover:bg-gray-600 text-white border-gray-500"
+                      : "bg-gray-500 hover:bg-gray-600 text-white border-gray-500",
                   ].join(" ")}
                 >
                   All Classes
@@ -192,7 +251,6 @@ export default function Students() {
               </div>
             </div>
 
-            {/* Compact search */}
             <div className="shrink-0 w-full sm:w-64">
               <input
                 type="text"
@@ -206,25 +264,23 @@ export default function Students() {
         </div>
       </div>
 
-      {/* Card with sticky column header + scrollable rows only */}
-      <div className="bg-white border rounded-xl shadow-sm max-h-[80vh] overflow-y-auto scroll-stable">
-        {/* Sticky column headers */}
+      {/* Table */}
+      <div className="bg-white border rounded-xl shadow-sm max-h-[80vh] overflow-y-auto">
         <div className="sticky top-0 z-20 bg-gray-100 border-b">
           <div className="grid grid-cols-[2fr_2fr_1fr_1fr] gap-2 px-4 py-3 text-gray-700 uppercase text-xs sm:text-sm font-semibold">
             <div>First Name</div>
             <div>Second Name</div>
-            <div>Class</div>
+            <div>Class ({year})</div>
             <div className="text-center">Action</div>
           </div>
         </div>
 
-        {/* Rows (scrollable) */}
         <div className="divide-y">
           {filteredStudents.length === 0 ? (
-            <div className="px-4 py-6 text-center text-gray-500">No students found.</div>
+            <div className="px-4 py-6 text-center text-gray-500">No students found for {year}.</div>
           ) : (
             filteredStudents.map((s) => {
-              const displayClass = normalizeClass(s?.studentclass);
+              const displayClass = normalizeClass(s?.classForYear || s?.studentclass);
               return (
                 <div
                   key={s._id}
@@ -251,8 +307,9 @@ export default function Students() {
       {/* Add modal */}
       {showAddForm && (
         <AddStudentForm
-          onClose={closeAddForm}
+          onClose={() => setShowAddForm(false)}
           onStudentAdded={handleStudentAdded}
+          selectedYear={year}   // ✅ pass year into form
           initialData={null}
         />
       )}
@@ -261,10 +318,12 @@ export default function Students() {
       {selectedStudent && (
         <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 overflow-y-auto py-10">
           <div className="bg-white p-6 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-bold mb-4">Student Details</h3>
+            <h3 className="text-xl font-bold mb-1">Student Details</h3>
+            <div className="text-sm text-gray-600 mb-4">
+              Editing enrollment for year <b>{year}</b>
+            </div>
 
             <form onSubmit={handleUpdate} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Student */}
               <div className="space-y-3">
                 <label className="block">
                   <span className="block mb-1">First Name</span>
@@ -293,7 +352,7 @@ export default function Students() {
                 </label>
 
                 <label className="block">
-                  <span className="block mb-1">Class</span>
+                  <span className="block mb-1">Class ({year})</span>
                   <select
                     value={selectedStudent.studentclass || ""}
                     onChange={(e) =>
@@ -303,9 +362,35 @@ export default function Students() {
                     required
                   >
                     <option value="" disabled>Select class</option>
-                    {CLASS_FILTERS.map(c => <option key={c} value={c}>{c}</option>)}
+                    {CLASS_FILTERS.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
                   </select>
                 </label>
+
+                {/* Delete */}
+                <div className="mt-4 border-t pt-3">
+                  <div className="text-sm font-semibold text-red-700 mb-2">
+                    Delete (Deactivate) Student
+                  </div>
+                  <input
+                    value={deleteReason}
+                    onChange={(e) => setDeleteReason(e.target.value)}
+                    className="w-full border p-2 rounded"
+                    placeholder="Reason (e.g. duplicate, transferred, wrong entry)"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleDeleteStudent}
+                    disabled={deleting}
+                    className="mt-2 w-full bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded disabled:opacity-60"
+                  >
+                    {deleting ? "Deleting…" : "Delete Student"}
+                  </button>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Safe delete: student becomes <b>inactive</b> (payments remain).
+                  </div>
+                </div>
               </div>
 
               {/* Parent */}
@@ -318,7 +403,7 @@ export default function Students() {
                     onChange={(e) =>
                       setSelectedStudent({
                         ...selectedStudent,
-                        parent: { ...selectedStudent.parent, fullName: e.target.value }
+                        parent: { ...selectedStudent.parent, fullName: e.target.value },
                       })
                     }
                     className="w-full border p-2 rounded"
@@ -333,15 +418,12 @@ export default function Students() {
                     onChange={(e) =>
                       setSelectedStudent({
                         ...selectedStudent,
-                        parent: { ...selectedStudent.parent, phone: e.target.value }
+                        parent: { ...selectedStudent.parent, phone: e.target.value },
                       })
                     }
                     className="w-full border p-2 rounded"
                     placeholder="+254712345678"
                   />
-                  <small className="text-gray-500">
-                    Use the guardian’s main number. Example: +254712345678
-                  </small>
                 </label>
 
                 <label className="block">
@@ -352,7 +434,7 @@ export default function Students() {
                     onChange={(e) =>
                       setSelectedStudent({
                         ...selectedStudent,
-                        parent: { ...selectedStudent.parent, address: e.target.value }
+                        parent: { ...selectedStudent.parent, address: e.target.value },
                       })
                     }
                     className="w-full border p-2 rounded"
@@ -367,7 +449,7 @@ export default function Students() {
                     onChange={(e) =>
                       setSelectedStudent({
                         ...selectedStudent,
-                        parent: { ...selectedStudent.parent, email: e.target.value }
+                        parent: { ...selectedStudent.parent, email: e.target.value },
                       })
                     }
                     className="w-full border p-2 rounded"
@@ -375,7 +457,6 @@ export default function Students() {
                 </label>
               </div>
 
-              {/* Actions */}
               <div className="md:col-span-2 flex justify-end gap-3 mt-2">
                 <button
                   type="button"

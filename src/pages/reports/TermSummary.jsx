@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import api from "../../api/Axios";
 
 export default function TermSummary({ defaultYear = 2026, defaultTerm = "Term1" }) {
@@ -8,18 +9,46 @@ export default function TermSummary({ defaultYear = 2026, defaultTerm = "Term1" 
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function load() {
-    setErr(""); setLoading(true);
+  const location = useLocation();
+  const reqIdRef = useRef(0);
+
+  async function load(y = year, t = term) {
+    const reqId = ++reqIdRef.current;
+    setErr("");
+    setLoading(true);
     try {
-      const { data } = await api.get("/fees/term-summary", { params: { year, term } });
-      setData(data);
+      const res = await api.get("/fees/term-summary", { params: { year: y, term: t } });
+      if (reqId !== reqIdRef.current) return;
+      setData(res.data);
     } catch (e) {
+      if (reqId !== reqIdRef.current) return;
       setErr(e?.response?.data?.error || e?.message || "Failed to load");
-    } finally { setLoading(false); }
+      setData(null);
+    } finally {
+      if (reqId === reqIdRef.current) setLoading(false);
+    }
   }
 
-  useEffect(()=>{ load(); /* initial */ }, []); // eslint-disable-line
+  // Re-fetch when year/term changes OR when we navigate back to this page
+  useEffect(() => {
+    if (!year || !term) return;
+    load(year, term);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, term, location.key]);
 
+  // Also re-fetch when tab/window refocus
+  useEffect(() => {
+    const onFocus = () => load(year, term);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, term]);
+
+  // ✅ ADD THESE (you were missing them)
   const pct = Number(data?.percent || 0);
   const expected = Number(data?.totalExpected || 0);
   const received = Number(data?.totalReceived || 0);
@@ -33,23 +62,30 @@ export default function TermSummary({ defaultYear = 2026, defaultTerm = "Term1" 
             type="number"
             className="border rounded px-2 py-1 w-28"
             value={year}
-            onChange={(e)=>setYear(Number(e.target.value))}
+            onChange={(e) => setYear(Number(e.target.value))}
+            min={2000}
           />
         </div>
+
         <div>
           <label className="block text-sm text-gray-600">Term</label>
           <select
             className="border rounded px-2 py-1"
             value={term}
-            onChange={(e)=>setTerm(e.target.value)}
+            onChange={(e) => setTerm(e.target.value)}
           >
             <option value="Term1">Term1</option>
             <option value="Term2">Term2</option>
             <option value="Term3">Term3</option>
           </select>
         </div>
-        <button onClick={load} className="h-9 px-3 rounded bg-blue-600 text-white">
-          Refresh
+
+        <button
+          onClick={() => load(year, term)}
+          className="h-9 px-3 rounded bg-blue-600 text-white"
+          disabled={loading}
+        >
+          {loading ? "Loading…" : "Refresh"}
         </button>
       </div>
 
@@ -61,8 +97,10 @@ export default function TermSummary({ defaultYear = 2026, defaultTerm = "Term1" 
           <div className="font-semibold mb-1">
             {data.school?.name} — {term} {year}
           </div>
+
           <div className="text-sm text-gray-600 mb-3">
-            Active students: {data.studentsCount?.toLocaleString()} • Receipts: {data.receiptsCount?.toLocaleString()}
+            Active students: {data.studentsCount?.toLocaleString()} • Receipts:{" "}
+            {data.receiptsCount?.toLocaleString()}
           </div>
 
           <div className="grid grid-cols-2 gap-3 text-sm mb-3">

@@ -143,6 +143,17 @@ export default function SideBar() {
                 </svg>
                 <span>Daily Range</span>
               </NavLink>
+               
+               <NavLink
+                to="/fees-dashboard"
+                className={({isActive}) => navClasses(isActive)}
+                onClick={() => setOpen(false)}
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24">
+                  <path fill="currentColor" d="M4 4h16v4H4zm0 6h16v10H4z"/>
+                </svg>
+                <span>Fees Dashboard</span>
+              </NavLink>
 
               <NavLink
                 to="/reports/term-summary"
@@ -154,7 +165,45 @@ export default function SideBar() {
                 </svg>
                 <span>Term Summary</span>
               </NavLink>
-            </>
+            
+            {/* Fees Setup */}
+<div className="pt-4 pb-1 text-[11px] uppercase tracking-wide text-slate-400">
+  Fees Setup
+</div>
+
+<NavLink
+  to="/admin/fees-setup"
+  className={({isActive}) => navClasses(isActive)}
+  onClick={() => setOpen(false)}
+>
+  <svg className="h-5 w-5" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M12 1a2 2 0 0 1 2 2v1h4a2 2 0 0 1 2 2v3H2V6a2 2 0 0 1 2-2h4V3a2 2 0 0 1 2-2m10 9v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10zm-4 3H6v2h12zm0 4H6v2h12z"/>
+  </svg>
+  <span>Fees & Extras</span>
+</NavLink>
+
+<NavLink
+  to="/admin/textbooks"
+  className={({isActive}) => navClasses(isActive)}
+  onClick={() => setOpen(false)}
+>
+  <svg className="h-5 w-5" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M6 4h11a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2V6a2 2 0 0 1 2-2m0 2v10h11V6z"/>
+  </svg>
+  <span>Textbook Prices</span>
+</NavLink>
+<NavLink
+  to="/admin/tuition"
+  className={({isActive}) => navClasses(isActive)}
+  onClick={() => setOpen(false)}
+>
+  <svg className="h-5 w-5" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M4 4h16v4H4zm0 6h16v10H4z"/>
+  </svg>
+  <span>Tuition Fees</span>
+</NavLink>
+
+</>
           )}
         </nav>
 

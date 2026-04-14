@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import api from "../../api/Axios.js";
 
 const CLASS_LABELS = [
   "Playgroup", "PP1", "PP2",
@@ -11,20 +12,17 @@ const TERMS = ["Term1","Term2","Term3"];
 function normalizePhone(input) {
   if (!input) return "";
   let s = String(input).trim();
-  s = s.replace(/\s+/g, "").replace(/[^\d+]/g, ""); // keep + and digits
-  // Kenyan-friendly helpers:
-  if (/^0\d{9}$/.test(s)) return "+254" + s.slice(1); // 07xxxxxxxx -> +2547xxxxxxxx
-  if (/^7\d{8}$/.test(s)) return "+254" + s;          // 7xxxxxxxx -> +2547xxxxxxxx
+  s = s.replace(/\s+/g, "").replace(/[^\d+]/g, "");
+  if (/^0\d{9}$/.test(s)) return "+254" + s.slice(1);
+  if (/^7\d{8}$/.test(s)) return "+254" + s;
   return s;
 }
 
-const AddStudentForm = ({ onClose, onStudentAdded, initialData = null }) => {
-  // Student
+const AddStudentForm = ({ onClose, onStudentAdded, selectedYear, initialData = null }) => {
   const [firstName, setFirstName] = useState(initialData?.firstName || "");
   const [secondName, setSecondName] = useState(initialData?.secondName || "");
   const [studentclass, setStudentClass] = useState(initialData?.studentclass || "");
 
-  // Parent (map to backend: fullName, phone, address, email)
   const [parentFullName, setParentFullName] = useState(
     initialData?.parent?.fullName || initialData?.parent?.name || ""
   );
@@ -34,7 +32,6 @@ const AddStudentForm = ({ onClose, onStudentAdded, initialData = null }) => {
   );
   const [parentEmail, setParentEmail] = useState(initialData?.parent?.email || "");
 
-  // New admission (optional)
   const [isNewAdmission, setIsNewAdmission] = useState(false);
   const [admittedYear, setAdmittedYear] = useState("");
   const [admittedTerm, setAdmittedTerm] = useState("");
@@ -45,7 +42,6 @@ const AddStudentForm = ({ onClose, onStudentAdded, initialData = null }) => {
     e.preventDefault();
 
     const phone = normalizePhone(parentPhone);
-    // Basic sanity check: allow +2547xxxxxxxx or empty (if you want to require, remove the second clause)
     if (phone && !/^\+?\d{10,15}$/.test(phone)) {
       alert("Please enter a valid phone number (e.g., +254712345678).");
       return;
@@ -55,16 +51,19 @@ const AddStudentForm = ({ onClose, onStudentAdded, initialData = null }) => {
       firstName,
       secondName,
       studentclass,
+
+      // ✅ IMPORTANT: makes student appear in the selected year list (Option B)
+      currentYear: Number(selectedYear),
+
       parentDetails: {
         fullName: parentFullName,
         phone,
         address: parentAddress,
-        email: parentEmail
-      }
+        email: parentEmail,
+      },
     };
 
     if (!initialData && isNewAdmission) {
-      // only on CREATE
       payload.isNewAdmission = true;
       payload.admittedYear = admittedYear ? Number(admittedYear) : undefined;
       payload.admittedTerm = admittedTerm || undefined;
@@ -72,32 +71,22 @@ const AddStudentForm = ({ onClose, onStudentAdded, initialData = null }) => {
 
     setIsSubmitting(true);
     try {
-      const url = initialData
-        ? `http://localhost:5000/students/${initialData._id}`
-        : "http://localhost:5000/students";
-      const method = initialData ? "PUT" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        const msg =
-          res.status === 409
-            ? "That phone is already linked to another parent."
-            : data?.error || data?.msg || "Failed";
-        alert(msg);
-        return;
+      if (initialData) {
+        await api.put(`/students/${initialData._id}`, payload);
+      } else {
+        await api.post("/students", payload);
       }
 
       alert(initialData ? "Student updated ✅" : "Student added ✅");
-      onStudentAdded(studentclass);
+      onStudentAdded();
       onClose();
     } catch (err) {
-      alert("Error submitting data ❌");
+      const msg =
+        err?.response?.data?.error ||
+        err?.response?.data?.msg ||
+        err?.message ||
+        "Error submitting data ❌";
+      alert(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -106,9 +95,12 @@ const AddStudentForm = ({ onClose, onStudentAdded, initialData = null }) => {
   return (
     <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 px-4">
       <div className="bg-white p-6 md:p-8 rounded-lg shadow-lg w-full max-w-xl overflow-y-auto max-h-[90vh]">
-        <h2 className="text-xl font-bold mb-4">
+        <h2 className="text-xl font-bold mb-1">
           {initialData ? "Edit Student" : "Add Student"}
         </h2>
+        <div className="text-sm text-gray-600 mb-4">
+          Enrollment year: <b>{selectedYear}</b>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Student Info */}
@@ -144,7 +136,7 @@ const AddStudentForm = ({ onClose, onStudentAdded, initialData = null }) => {
                 className="w-full border px-3 py-2 rounded bg-white"
               >
                 <option value="" disabled>Select class</option>
-                {CLASS_LABELS.map(c => (
+                {CLASS_LABELS.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
@@ -187,7 +179,9 @@ const AddStudentForm = ({ onClose, onStudentAdded, initialData = null }) => {
                       required
                     >
                       <option value="" disabled>Select term</option>
-                      {TERMS.map(t => <option key={t} value={t}>{t}</option>)}
+                      {TERMS.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
                     </select>
                   </label>
                 </div>
@@ -219,9 +213,6 @@ const AddStudentForm = ({ onClose, onStudentAdded, initialData = null }) => {
                   className="w-full border px-3 py-2 rounded"
                   placeholder="+254712345678"
                 />
-                <small className="text-gray-500">
-                  Use the guardian’s main number. Example: +254712345678
-                </small>
               </label>
 
               <label className="block">
@@ -246,7 +237,6 @@ const AddStudentForm = ({ onClose, onStudentAdded, initialData = null }) => {
             </div>
           </div>
 
-          {/* Buttons */}
           <div className="flex justify-end gap-3">
             <button
               type="button"
