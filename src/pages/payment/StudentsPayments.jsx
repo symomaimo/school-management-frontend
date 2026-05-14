@@ -117,7 +117,7 @@ function canEditPayment(role, payment, nowTick, limitMinutes = 10) {
 }
 
 function canDeletePayment(role) {
-  return role === "DIRECTOR";
+  return String(role || "").toUpperCase() === "DIRECTOR";
 }
 
 function editRemainingText(payment, nowTick, limitMinutes = 10) {
@@ -1439,6 +1439,42 @@ async function saveEdit() {
   } catch (e) {
     toast.error(e?.response?.data?.message || e?.message || "Failed to update payment");
     setEdit((x) => ({ ...x, saving: false }));
+  }
+}
+
+async function voidPayment(id) {
+  const reason = window.prompt("Enter reason for deleting/voiding this payment:");
+
+  if (!reason || !reason.trim()) {
+    toast.error("Void reason is required");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    await api.patch(`/fees/${id}/void`, {
+      reason: reason.trim(),
+    });
+
+    toast.success("Payment voided successfully ✅");
+
+    await loadBase({ force: true });
+
+    if (appliedKey !== "BASE") {
+      await loadAppliedPreview({ force: true });
+    }
+
+    onPaymentsChanged?.();
+  } catch (e) {
+    toast.error(
+      e?.response?.data?.message ||
+        e?.response?.data?.error ||
+        e?.message ||
+        "Failed to void payment"
+    );
+  } finally {
+    setLoading(false);
   }
 }
 

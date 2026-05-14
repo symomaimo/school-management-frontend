@@ -4,14 +4,15 @@ import api from "../../api/Axios.js";
 import AddStudentForm from "./AddStudentForm";
 
 const CLASS_FILTERS = [
-  "Playgroup","PP1","PP2",
-  "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5",
-  "Grade 6","Grade 7","Grade 8","Grade 9",
+  "Playgroup", "PP1", "PP2",
+  "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5",
+  "Grade 6", "Grade 7", "Grade 8", "Grade 9",
 ];
 
 function normalizeClass(raw) {
   const v = String(raw ?? "").trim().toLowerCase();
   if (!v) return "";
+
   if (["playgroup", "play group", "pg"].includes(v)) return "Playgroup";
   if (["pp1", "pp 1", "pp-1"].includes(v)) return "PP1";
   if (["pp2", "pp 2", "pp-2"].includes(v)) return "PP2";
@@ -31,6 +32,8 @@ export default function Students() {
   const [year, setYear] = useState(today.getFullYear());
 
   const [students, setStudents] = useState([]);
+  const [mode, setMode] = useState("active"); // active | inactive
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -46,17 +49,19 @@ export default function Students() {
   useEffect(() => {
     fetchStudents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [year]);
+  }, [year, mode]);
 
   async function fetchStudents() {
     try {
       setError(null);
       setLoading(true);
 
-      // ✅ Option B: only students enrolled in selected year
-      const res = await api.get("/students", {
-        params: { year, onlyEnrolled: true },
-      });
+      const params =
+        mode === "inactive"
+          ? { mode }
+          : { year, onlyEnrolled: true, mode };
+
+      const res = await api.get("/students", { params });
 
       const rows = Array.isArray(res.data) ? res.data : [];
       setStudents(rows);
@@ -78,7 +83,6 @@ export default function Students() {
 
     setDeleteReason("Duplicate / wrong entry");
 
-    // ✅ when opening modal, use classForYear for editing
     setSelectedStudent({
       ...s,
       studentclass: s.classForYear || s.studentclass,
@@ -88,9 +92,10 @@ export default function Students() {
 
   async function handleUpdate(e) {
     e.preventDefault();
+
     try {
       const payload = {
-        year, // ✅ IMPORTANT: update enrollment for this year
+        year,
         firstName: selectedStudent.firstName,
         secondName: selectedStudent.secondName,
         studentclass: selectedStudent.studentclass,
@@ -117,6 +122,7 @@ export default function Students() {
             err?.response?.data?.msg ||
             err.message ||
             "Update failed";
+
       alert(msg);
     }
   }
@@ -129,6 +135,7 @@ export default function Students() {
     const ok = window.confirm(
       `Delete (Deactivate) this student?\n\n${name}\nYear: ${year}\n\nThis will NOT remove payments. It only hides the student from active lists.`
     );
+
     if (!ok) return;
 
     try {
@@ -147,19 +154,43 @@ export default function Students() {
         e?.response?.data?.msg ||
         e?.message ||
         "Failed to delete student";
+
       alert(msg);
     } finally {
       setDeleting(false);
     }
   }
 
+  async function restoreStudent(id) {
+    const ok = window.confirm("Restore this student?");
+    if (!ok) return;
+
+    try {
+      await api.patch(`/students/${id}/restore`);
+      alert("Student restored ✅");
+      fetchStudents();
+    } catch (e) {
+      const msg =
+        e?.response?.data?.error ||
+        e?.response?.data?.msg ||
+        e?.message ||
+        "Failed to restore student";
+
+      alert(msg);
+    }
+  }
+
   const filteredStudents = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
+
     return (students || []).filter((s) => {
       const cls = normalizeClass(s?.classForYear || s?.studentclass);
       const matchesClass = selectedClass ? cls === selectedClass : true;
 
-      const full = `${s?.firstName ?? ""} ${s?.secondName ?? ""}`.trim().toLowerCase();
+      const full = `${s?.firstName ?? ""} ${s?.secondName ?? ""}`
+        .trim()
+        .toLowerCase();
+
       const matchesSearch = q ? full.includes(q) : true;
 
       return matchesClass && matchesSearch;
@@ -171,55 +202,96 @@ export default function Students() {
 
   return (
     <div className="p-6">
-      {/* Sticky header */}
       <div className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b pb-3 mb-3">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
           <div>
             <h2 className="text-2xl font-bold">Manage Students</h2>
+
             <div className="text-sm text-gray-600">
-              Showing enrolled students for <b>{year}</b> (Total: {students.length})
+              {mode === "inactive" ? (
+                <>
+                  Showing <b>deleted students</b> (Total: {students.length})
+                </>
+              ) : (
+                <>
+                  Showing enrolled students for <b>{year}</b> (Total: {students.length})
+                </>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Year switcher */}
+          <div className="flex flex-wrap items-center gap-2">
+            {mode === "active" && (
+              <>
+                <button
+                  type="button"
+                  className="px-2 py-1 border rounded text-sm"
+                  onClick={() => setYear((y) => y - 1)}
+                  title="Previous year"
+                >
+                  −
+                </button>
+
+                <input
+                  type="number"
+                  min="2020"
+                  max="2100"
+                  value={year}
+                  onChange={(e) => setYear(Number(e.target.value))}
+                  className="w-24 border rounded-lg px-2 py-1 text-sm text-center"
+                />
+
+                <button
+                  type="button"
+                  className="px-2 py-1 border rounded text-sm"
+                  onClick={() => setYear((y) => y + 1)}
+                  title="Next year"
+                >
+                  +
+                </button>
+              </>
+            )}
+
             <button
               type="button"
-              className="px-2 py-1 border rounded text-sm"
-              onClick={() => setYear((y) => y - 1)}
-              title="Previous year"
+              onClick={() => setMode("active")}
+              className={[
+                "px-4 py-2 rounded-lg",
+                mode === "active"
+                  ? "bg-blue-700 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300",
+              ].join(" ")}
             >
-              −
-            </button>
-            <input
-              type="number"
-              min="2020"
-              max="2100"
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              className="w-24 border rounded-lg px-2 py-1 text-sm text-center"
-            />
-            <button
-              type="button"
-              className="px-2 py-1 border rounded text-sm"
-              onClick={() => setYear((y) => y + 1)}
-              title="Next year"
-            >
-              +
+              Active
             </button>
 
             <button
-              onClick={() => setShowAddForm(true)}
-              className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg"
+              type="button"
+              onClick={() => setMode("inactive")}
+              className={[
+                "px-4 py-2 rounded-lg",
+                mode === "inactive"
+                  ? "bg-red-700 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300",
+              ].join(" ")}
             >
-              Add Student
+              Deleted
             </button>
+
+            {mode === "active" && (
+              <button
+                onClick={() => setShowAddForm(true)}
+                className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg"
+              >
+                Add Student
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Filters + Search */}
         <div className="mt-3">
           <p className="text-sm mb-2 text-gray-700">Filter by Class</p>
+
           <div className="flex items-center gap-2">
             <div className="flex-1 overflow-x-auto no-scrollbar">
               <div className="flex flex-nowrap gap-2 min-w-max">
@@ -237,6 +309,7 @@ export default function Students() {
                     {label}
                   </button>
                 ))}
+
                 <button
                   onClick={() => setSelectedClass("")}
                   className={[
@@ -264,23 +337,27 @@ export default function Students() {
         </div>
       </div>
 
-      {/* Table */}
       <div className="bg-white border rounded-xl shadow-sm max-h-[80vh] overflow-y-auto">
         <div className="sticky top-0 z-20 bg-gray-100 border-b">
           <div className="grid grid-cols-[2fr_2fr_1fr_1fr] gap-2 px-4 py-3 text-gray-700 uppercase text-xs sm:text-sm font-semibold">
             <div>First Name</div>
             <div>Second Name</div>
-            <div>Class ({year})</div>
+            <div>Class {mode === "active" ? `(${year})` : ""}</div>
             <div className="text-center">Action</div>
           </div>
         </div>
 
         <div className="divide-y">
           {filteredStudents.length === 0 ? (
-            <div className="px-4 py-6 text-center text-gray-500">No students found for {year}.</div>
+            <div className="px-4 py-6 text-center text-gray-500">
+              {mode === "inactive"
+                ? "No deleted students found."
+                : `No students found for ${year}.`}
+            </div>
           ) : (
             filteredStudents.map((s) => {
               const displayClass = normalizeClass(s?.classForYear || s?.studentclass);
+
               return (
                 <div
                   key={s._id}
@@ -289,13 +366,23 @@ export default function Students() {
                   <div className="truncate">{s.firstName}</div>
                   <div className="truncate">{s.secondName}</div>
                   <div className="truncate">{displayClass}</div>
+
                   <div className="text-center">
-                    <button
-                      onClick={() => handleView(s._id)}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded"
-                    >
-                      View / Edit
-                    </button>
+                    {mode === "inactive" ? (
+                      <button
+                        onClick={() => restoreStudent(s._id)}
+                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded"
+                      >
+                        Restore
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleView(s._id)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded"
+                      >
+                        View / Edit
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -304,21 +391,20 @@ export default function Students() {
         </div>
       </div>
 
-      {/* Add modal */}
       {showAddForm && (
         <AddStudentForm
           onClose={() => setShowAddForm(false)}
           onStudentAdded={handleStudentAdded}
-          selectedYear={year}   // ✅ pass year into form
+          selectedYear={year}
           initialData={null}
         />
       )}
 
-      {/* Edit modal */}
       {selectedStudent && (
         <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 overflow-y-auto py-10">
           <div className="bg-white p-6 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-1">Student Details</h3>
+
             <div className="text-sm text-gray-600 mb-4">
               Editing enrollment for year <b>{year}</b>
             </div>
@@ -331,7 +417,10 @@ export default function Students() {
                     type="text"
                     value={selectedStudent.firstName || ""}
                     onChange={(e) =>
-                      setSelectedStudent({ ...selectedStudent, firstName: e.target.value })
+                      setSelectedStudent({
+                        ...selectedStudent,
+                        firstName: e.target.value,
+                      })
                     }
                     className="w-full border p-2 rounded"
                     required
@@ -344,7 +433,10 @@ export default function Students() {
                     type="text"
                     value={selectedStudent.secondName || ""}
                     onChange={(e) =>
-                      setSelectedStudent({ ...selectedStudent, secondName: e.target.value })
+                      setSelectedStudent({
+                        ...selectedStudent,
+                        secondName: e.target.value,
+                      })
                     }
                     className="w-full border p-2 rounded"
                     required
@@ -356,29 +448,38 @@ export default function Students() {
                   <select
                     value={selectedStudent.studentclass || ""}
                     onChange={(e) =>
-                      setSelectedStudent({ ...selectedStudent, studentclass: e.target.value })
+                      setSelectedStudent({
+                        ...selectedStudent,
+                        studentclass: e.target.value,
+                      })
                     }
                     className="w-full border p-2 rounded bg-white"
                     required
                   >
-                    <option value="" disabled>Select class</option>
+                    <option value="" disabled>
+                      Select class
+                    </option>
+
                     {CLASS_FILTERS.map((c) => (
-                      <option key={c} value={c}>{c}</option>
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
                     ))}
                   </select>
                 </label>
 
-                {/* Delete */}
                 <div className="mt-4 border-t pt-3">
                   <div className="text-sm font-semibold text-red-700 mb-2">
                     Delete (Deactivate) Student
                   </div>
+
                   <input
                     value={deleteReason}
                     onChange={(e) => setDeleteReason(e.target.value)}
                     className="w-full border p-2 rounded"
                     placeholder="Reason (e.g. duplicate, transferred, wrong entry)"
                   />
+
                   <button
                     type="button"
                     onClick={handleDeleteStudent}
@@ -387,13 +488,13 @@ export default function Students() {
                   >
                     {deleting ? "Deleting…" : "Delete Student"}
                   </button>
+
                   <div className="text-xs text-gray-500 mt-1">
                     Safe delete: student becomes <b>inactive</b> (payments remain).
                   </div>
                 </div>
               </div>
 
-              {/* Parent */}
               <div className="space-y-3">
                 <label className="block">
                   <span className="block mb-1">Parent Full Name</span>
@@ -403,7 +504,10 @@ export default function Students() {
                     onChange={(e) =>
                       setSelectedStudent({
                         ...selectedStudent,
-                        parent: { ...selectedStudent.parent, fullName: e.target.value },
+                        parent: {
+                          ...selectedStudent.parent,
+                          fullName: e.target.value,
+                        },
                       })
                     }
                     className="w-full border p-2 rounded"
@@ -418,7 +522,10 @@ export default function Students() {
                     onChange={(e) =>
                       setSelectedStudent({
                         ...selectedStudent,
-                        parent: { ...selectedStudent.parent, phone: e.target.value },
+                        parent: {
+                          ...selectedStudent.parent,
+                          phone: e.target.value,
+                        },
                       })
                     }
                     className="w-full border p-2 rounded"
@@ -434,7 +541,10 @@ export default function Students() {
                     onChange={(e) =>
                       setSelectedStudent({
                         ...selectedStudent,
-                        parent: { ...selectedStudent.parent, address: e.target.value },
+                        parent: {
+                          ...selectedStudent.parent,
+                          address: e.target.value,
+                        },
                       })
                     }
                     className="w-full border p-2 rounded"
@@ -449,7 +559,10 @@ export default function Students() {
                     onChange={(e) =>
                       setSelectedStudent({
                         ...selectedStudent,
-                        parent: { ...selectedStudent.parent, email: e.target.value },
+                        parent: {
+                          ...selectedStudent.parent,
+                          email: e.target.value,
+                        },
                       })
                     }
                     className="w-full border p-2 rounded"
@@ -465,6 +578,7 @@ export default function Students() {
                 >
                   Close
                 </button>
+
                 <button
                   type="submit"
                   className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
